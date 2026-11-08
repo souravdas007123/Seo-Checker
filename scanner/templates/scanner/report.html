@@ -1,0 +1,180 @@
+{% extends "scanner/base.html" %}
+{% block title %}SEO report: {{ scan.url }}{% endblock %}
+{% block head %}
+<style>
+  .score { display:flex; align-items:center; gap:18px; flex-wrap:wrap; }
+  .ring { --p:0; width:96px; height:96px; border-radius:50%; display:grid; place-items:center; flex:none;
+    background: conic-gradient(var(--c, var(--accent)) calc(var(--p) * 1%), var(--line) 0); }
+  .ring > span { width:76px; height:76px; border-radius:50%; background:var(--card); display:grid; place-items:center; font-size:1.7rem; font-weight:700; }
+  .url { word-break:break-all; color:var(--muted); font-size:.9rem; }
+  .progress { color:var(--muted); display:flex; align-items:center; gap:8px; margin:6px 0 0; }
+  .spin { width:14px; height:14px; border:2px solid var(--line); border-top-color:var(--accent); border-radius:50%; animation:sp .8s linear infinite; }
+  @keyframes sp { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .spin { animation:none; } }
+  h2 { font-size:1.1rem; margin:28px 0 10px; }
+  .top3 { margin-top:16px; }
+  .top3 ol { margin:8px 0 0; padding-left:22px; }
+  .top3 li { margin:6px 0; }
+  .top3 a { color:inherit; }
+  .f { border:1px solid var(--line); border-left-width:5px; border-radius:12px; background:var(--card); padding:14px 16px; margin:10px 0; }
+  .f.fail { border-left-color:var(--fail); } .f.warn { border-left-color:var(--warn); } .f.pass { border-left-color:var(--pass); }
+  .f.info { border-left-color:var(--info); } .f.unverified { border-left-color:var(--unv); }
+  .f h3 { margin:0; font-size:1rem; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .chip { font-size:.72rem; font-weight:600; padding:2px 8px; border-radius:99px; text-transform:uppercase; letter-spacing:.03em; }
+  .chip.fail { background:var(--fail-bg); color:var(--fail); } .chip.warn { background:var(--warn-bg); color:var(--warn); }
+  .chip.pass { background:var(--pass-bg); color:var(--pass); } .chip.info { background:var(--info-bg); color:var(--info); }
+  .chip.unverified { background:var(--unv-bg); color:var(--unv); }
+  .chip.lbl { background:transparent; border:1px solid var(--line); color:var(--muted); text-transform:none; font-weight:500; }
+  .f p { margin:6px 0 0; }
+  .meta { color:var(--muted); font-size:.8rem; margin-top:6px; }
+  pre { background:var(--bg); border:1px solid var(--line); border-radius:8px; padding:10px 12px; overflow:auto; font-size:.82rem; margin:8px 0 0; white-space:pre-wrap; word-break:break-word; }
+  .fixhead { display:flex; justify-content:space-between; align-items:center; margin-top:10px; font-size:.8rem; color:var(--muted); font-weight:600; }
+  details > summary { cursor:pointer; color:var(--muted); font-size:.9rem; margin:16px 0 4px; }
+  .legend { color:var(--muted); font-size:.82rem; margin-top:8px; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="card">
+  <div class="score">
+    <div class="ring" id="ring" role="img" aria-label="SEO score"><span id="scoreNum">…</span></div>
+    <div>
+      <strong>SEO report</strong>
+      <div class="url" id="finalUrl">{{ scan.url }}</div>
+      <div class="progress" id="progress" aria-live="polite"><span class="spin"></span><span id="progressText">Scan shuru ho raha hai…</span></div>
+    </div>
+  </div>
+  <div class="top3" id="top3" hidden>
+    <strong>Pehle ye fix karo</strong>
+    <ol id="top3List"></ol>
+  </div>
+  <div class="legend">
+    <b>Measured</b> = seedha naapa/dekha gaya · <b>Estimated</b> = andaza · <b>Unverified</b> = confirm nahi ho paya
+  </div>
+</div>
+
+<div id="live"></div>
+<div id="sections"></div>
+
+<script>
+(function () {
+  const STREAM_URL = "{% url 'stream' scan.id %}";
+  const CATS = { onpage: "On-page SEO", technical: "Technical SEO", ai: "AI search readiness" };
+  const STATUS_TEXT = { fail: "Fix karo", warn: "Improve", pass: "OK", info: "Info", unverified: "Unverified" };
+  const $ = (id) => document.getElementById(id);
+
+  // Scanned site ka content untrusted hai: hamesha textContent, kabhi innerHTML nahi.
+  function el(tag, cls, text) {
+    const n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text !== undefined && text !== null) n.textContent = text;
+    return n;
+  }
+
+  function card(f) {
+    const box = el("div", "f " + f.status);
+    box.id = "f-" + f.check_id;
+    const h = el("h3");
+    h.append(el("span", "chip " + f.status, STATUS_TEXT[f.status] || f.status), document.createTextNode(f.title),
+             el("span", "chip lbl", f.label));
+    box.append(h);
+    if (f.message) box.append(el("p", "", f.message));
+    if (f.evidence) box.append(el("pre", "", f.evidence));
+    if (f.fix) {
+      const head = el("div", "fixhead");
+      head.append(el("span", "", "READY-TO-PASTE FIX"));
+      const btn = el("button", "ghost", "Copy");
+      btn.type = "button";
+      btn.addEventListener("click", async () => {
+        try { await navigator.clipboard.writeText(f.fix); btn.textContent = "Copied ✓"; }
+        catch (e) { btn.textContent = "Copy nahi hua"; }
+        setTimeout(() => (btn.textContent = "Copy"), 1500);
+      });
+      head.append(btn);
+      box.append(head, el("pre", "", f.fix));
+    }
+    if (f.fix_note) box.append(el("div", "meta", f.fix_note));
+    if (f.status === "fail" || f.status === "warn") {
+      box.append(el("div", "meta", "Impact " + f.impact + "/5 · Mehnat: " + (f.effort_label || f.effort)));
+    }
+    return box;
+  }
+
+  function setScore(score) {
+    const ring = $("ring");
+    ring.style.setProperty("--p", score);
+    ring.style.setProperty("--c", score >= 80 ? "var(--pass)" : score >= 50 ? "var(--warn)" : "var(--fail)");
+    $("scoreNum").textContent = score;
+    ring.setAttribute("aria-label", "SEO score " + score + " out of 100");
+  }
+
+  function renderFinal(score, findings) {
+    $("live").replaceChildren();
+    const sections = $("sections");
+    sections.replaceChildren();
+    setScore(score);
+
+    const top = findings.filter((f) => f.priority > 0).sort((a, b) => b.priority - a.priority).slice(0, 5);
+    if (top.length) {
+      const list = $("top3List");
+      list.replaceChildren();
+      top.forEach((f) => {
+        const li = el("li");
+        const a = el("a", "", f.title);
+        a.href = "#f-" + f.check_id;
+        li.append(a, document.createTextNode(" — " + (f.effort_label || "") + (f.fix ? ", fix neeche ready hai" : "")));
+        list.append(li);
+      });
+      $("top3").hidden = false;
+    }
+
+    const groups = {};
+    findings.forEach((f) => (groups[f.category] = groups[f.category] || []).push(f));
+    Object.keys(CATS).forEach((cat) => {
+      const items = groups[cat];
+      if (!items) return;
+      const problems = items.filter((f) => f.status === "fail" || f.status === "warn");
+      const rest = items.filter((f) => !(f.status === "fail" || f.status === "warn"));
+      sections.append(el("h2", "", CATS[cat] + " (" + problems.length + " issues)"));
+      problems.forEach((f) => sections.append(card(f)));
+      if (rest.length) {
+        const d = el("details");
+        d.append(el("summary", "", rest.length + " checks theek / info"));
+        rest.forEach((f) => d.append(card(f)));
+        sections.append(d);
+      }
+    });
+  }
+
+  function finish(msg) {
+    $("progress").replaceChildren(el("span", "", msg || ""));
+  }
+
+  const es = new EventSource(STREAM_URL);
+  let ended = false;
+
+  es.onmessage = (e) => {
+    const ev = JSON.parse(e.data);
+    if (ev.type === "progress") {
+      $("progressText").textContent = ev.message;
+    } else if (ev.type === "meta") {
+      $("finalUrl").textContent = ev.final_url;
+      $("progressText").textContent = "Checks chal rahe hain…";
+    } else if (ev.type === "finding") {
+      $("live").append(card(ev.finding));
+    } else if (ev.type === "done") {
+      ended = true; es.close();
+      renderFinal(ev.score, ev.findings);
+      finish("Scan poora hua ✓");
+    } else if (ev.type === "error" || ev.type === "busy") {
+      ended = true; es.close();
+      $("scoreNum").textContent = "–";
+      finish(ev.message);
+    }
+  };
+  es.onerror = () => {
+    // Stream khatam hone par browser auto-reconnect karta hai; hum already band kar chuke hote hain.
+    if (!ended) { es.close(); finish("Connection toot gaya. Page refresh karke dobara try karo."); }
+  };
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% block title %}FixFirst SEO Checker{% endblock %}</title>
+<style>
+  :root {
+    --bg:#f7f6f2; --card:#fff; --ink:#1b1f23; --muted:#667085; --line:#e6e3da; --accent:#0b6e4f;
+    --fail:#c0392b; --warn:#b7791f; --pass:#1e8a5a; --info:#3b6fb6; --unv:#7a6f8f;
+    --fail-bg:#fdecea; --warn-bg:#fdf4e1; --pass-bg:#e7f6ee; --info-bg:#e8f0fb; --unv-bg:#efecf4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#14171a; --card:#1c2024; --ink:#eceff1; --muted:#9aa4af; --line:#2b3138; --accent:#3ecf9a;
+      --fail:#ff7b6b; --warn:#f0b955; --pass:#4cd08f; --info:#7fb0f0; --unv:#b5a8cf;
+      --fail-bg:#3a1f1c; --warn-bg:#352a14; --pass-bg:#16301f; --info-bg:#1b2a3f; --unv-bg:#2a2535; }
+  }
+  * { box-sizing: border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.55 system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans","Noto Sans Devanagari",sans-serif; }
+  .wrap { max-width: 860px; margin: 0 auto; padding: 24px 16px 64px; }
+  header.top { display:flex; align-items:center; gap:10px; margin-bottom: 28px; }
+  header.top a { color:var(--ink); text-decoration:none; font-weight:700; letter-spacing:-.01em; }
+  .dot { width:12px; height:12px; border-radius:50%; background:var(--accent); display:inline-block; }
+  h1 { font-size: clamp(1.6rem, 5vw, 2.4rem); line-height:1.15; letter-spacing:-.02em; margin:0 0 10px; }
+  .lead { color:var(--muted); margin:0 0 24px; max-width: 60ch; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:18px; }
+  button, .btn { font:inherit; cursor:pointer; border:0; border-radius:10px; padding:12px 18px; background:var(--accent); color:#fff; font-weight:600; }
+  @media (prefers-color-scheme: dark) { button, .btn { color:#0b1a14; } }
+  button.ghost { background:transparent; color:var(--ink); border:1px solid var(--line); padding:6px 10px; font-size:.8rem; font-weight:500; }
+  input[type=text] { font:inherit; width:100%; padding:12px 14px; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--ink); }
+  input[type=text]:focus-visible, button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .err { background:var(--fail-bg); color:var(--fail); border-radius:10px; padding:10px 14px; margin-bottom:14px; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; }
+  .row > input { flex:1 1 260px; }
+</style>
+{% block head %}{% endblock %}
+</head>
+<body>
+<div class="wrap">
+  <header class="top"><span class="dot"></span><a href="{% url 'home' %}">FixFirst SEO Checker</a></header>
+  {% block content %}{% endblock %}
+</div>
+</body>
+</html>

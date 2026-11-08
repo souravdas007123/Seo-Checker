@@ -1,0 +1,16 @@
+{% extends "scanner/base.html" %}
+{% block content %}
+<h1>Sirf problems nahi,<br>unke fix bhi.</h1>
+<p class="lead">Apni website ka URL daalo. Hum 20+ SEO aur AI-search checks chalate hain aur har issue ke saath copy-paste karne layak fix aur "pehle ye 3 karo" list dete hain.</p>
+
+<form method="post" class="card" novalidate>
+  {% csrf_token %}
+  {% if error %}<div class="err" role="alert">{{ error }}</div>{% endif %}
+  <label for="url" style="display:block;font-weight:600;margin-bottom:8px">Website URL</label>
+  <div class="row">
+    <input id="url" type="text" name="url" placeholder="example.com" inputmode="url" autocomplete="url" autofocus required>
+    <button type="submit">Check karo</button>
+  </div>
+  <p style="color:var(--muted);font-size:.85rem;margin:10px 0 0">Free: din mein {{ limit }} scans. Sirf public pages scan hote hain.</p>
+</form>
+{% endblock %}
