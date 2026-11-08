@@ -1,5 +1,6 @@
 import uuid
 
+from django.conf import settings
 from django.db import models
 
 
@@ -17,6 +18,8 @@ class Scan(models.Model):
     error = models.CharField(max_length=300, blank=True)
     deep = models.BooleanField(default=False)  # poori site crawl
     pages_json = models.TextField(blank=True)  # crawl kiye pages ki list (JSON)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL,
+                             related_name="scans")
     client_ip = models.GenericIPAddressField(null=True, blank=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     started_at = models.DateTimeField(null=True, blank=True)

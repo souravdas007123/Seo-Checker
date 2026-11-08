@@ -83,7 +83,7 @@
 (function () {
   const STREAM_URL = "{% url 'stream' scan.id %}";
   const DIFF_URL = "{% url 'diff' scan.id %}";
-  const CATS = { onpage: "On-page SEO", technical: "Technical SEO", site: "Poori site (crawl)", ai: "AI search readiness" };
+  const CATS = { onpage: "On-page SEO", technical: "Technical SEO", performance: "Speed (Core Web Vitals)", site: "Poori site (crawl)", ai: "AI search readiness" };
   const STATUS_TEXT = { fail: "Fix karo", warn: "Improve", pass: "OK", info: "Info", unverified: "Unverified" };
   const $ = (id) => document.getElementById(id);
 

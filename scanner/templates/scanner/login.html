@@ -1,0 +1,12 @@
+{% extends "scanner/base.html" %}
+{% block title %}Login | FixFirst SEO Checker{% endblock %}
+{% block content %}
+<h1 style="font-size:1.6rem">Login</h1>
+<form method="post" class="card authform" style="max-width:420px">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <input type="hidden" name="next" value="{{ next }}">
+  <button type="submit">Login</button>
+  <p style="margin:14px 0 0;color:var(--muted);font-size:.9rem">Naya account? <a href="{% url 'signup' %}">Sign up karo</a></p>
+</form>
+{% endblock %}

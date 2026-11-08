@@ -18,6 +18,7 @@ from .context import Ctx
 from .crawl import crawl_site
 from .fetcher import BROWSER_UA, Fetcher
 from .page import Page
+from .pagespeed import psi_findings
 from .priority import assign_priority, compute_score
 from .ssrf import UnsafeURL, normalize_url
 from .types import UNVERIFIED, Finding
@@ -25,6 +26,7 @@ from .types import UNVERIFIED, Finding
 log = logging.getLogger(__name__)
 
 CHECK_TIMEOUT = 25  # har check ke liye seconds
+PSI_WAIT = 55  # PageSpeed ke jawab ka max intezaar (seconds)
 
 
 async def _safe(check, ctx) -> list[Finding]:
@@ -40,7 +42,8 @@ async def _safe(check, ctx) -> list[Finding]:
                     label=UNVERIFIED, impact=1, effort=1)]
 
 
-async def run_scan(raw_url: str, deep: bool = False, max_pages: int = 25) -> AsyncIterator[dict]:
+async def run_scan(raw_url: str, deep: bool = False, max_pages: int = 25, pagespeed: bool = False,
+                   pagespeed_key: str | None = None) -> AsyncIterator[dict]:
     try:
         url = normalize_url(raw_url)
     except UnsafeURL as e:
@@ -74,8 +77,12 @@ async def run_scan(raw_url: str, deep: bool = False, max_pages: int = 25) -> Asy
             yield {"type": "meta", "final_url": page.url, "status": res.status, "elapsed_ms": round(res.elapsed * 1000)}
 
             tasks = [asyncio.create_task(_safe(c, ctx)) for c in ALL_CHECKS]
+            ps_task = None
+            if pagespeed:  # Google ka test saath-saath chalta hai, isliye scan ko zyada der nahi lagti
+                ps_task = asyncio.create_task(psi_findings(page.url, pagespeed_key))
+                tasks.append(ps_task)
             findings: list[Finding] = []
-            for fut in asyncio.as_completed(tasks):
+            for fut in asyncio.as_completed([t for t in tasks if t is not ps_task]):
                 for f in await fut:
                     findings.append(f)
                     yield {"type": "finding", "finding": f.to_dict()}
@@ -96,6 +103,16 @@ async def run_scan(raw_url: str, deep: bool = False, max_pages: int = 25) -> Asy
                     f = Finding("site_crawl", "site", "Site crawl", UNVERIFIED,
                                 "Site crawl poora nahi ho paya (internal error).",
                                 label=UNVERIFIED, impact=1, effort=1)
+                    findings.append(f)
+                    yield {"type": "finding", "finding": f.to_dict()}
+
+            if ps_task:
+                try:
+                    ps = await asyncio.wait_for(ps_task, PSI_WAIT)
+                except asyncio.TimeoutError:
+                    ps = [Finding("pagespeed", "performance", "Core Web Vitals", UNVERIFIED,
+                                  "PageSpeed test time par khatam nahi hua.", label=UNVERIFIED, impact=1, effort=1)]
+                for f in ps:
                     findings.append(f)
                     yield {"type": "finding", "finding": f.to_dict()}
 

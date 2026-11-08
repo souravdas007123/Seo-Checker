@@ -2,8 +2,13 @@ import json
 from datetime import timedelta
 
 from django.conf import settings
+from django.contrib.auth import login
+from django.contrib.auth.decorators import login_required
+from django.contrib.auth.forms import UserCreationForm
+from django.contrib.auth.views import LoginView
+from django.db import connection
 from django.db.models import Q
-from django.http import Http404, JsonResponse, StreamingHttpResponse
+from django.http import Http404, HttpResponse, JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 
@@ -31,19 +36,34 @@ def sse(event: dict) -> str:
     return f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
 
 
+def visible_q(request):
+    """Is visitor ko kaun se scans 'apne' dikhte hain: login user ke, aur is browser session ke."""
+    q = Q(pk__in=request.session.get("scan_ids", []))
+    if request.user.is_authenticated:
+        q |= Q(user=request.user)
+    return q
+
+
 def recent_scans(request, limit=8):
-    """History browser session ke hisaab se hai (login nahi, isliye doosre ka scan nahi dikhta)."""
+    return list(Scan.objects.filter(visible_q(request)).order_by("-created_at")[:limit])
+
+
+def claim_session_scans(request, user):
+    """Login/signup se pehle is browser mein jo scans kiye the, wo ab account ke ho jaate hain."""
     ids = request.session.get("scan_ids", [])
-    if not ids:
-        return []
-    found = {str(s.pk): s for s in Scan.objects.filter(pk__in=ids)}
-    return [found[i] for i in ids if i in found][:limit]
+    if ids:
+        Scan.objects.filter(pk__in=ids, user__isnull=True).update(user=user)
 
 
 # ---------- pages ----------
 def home(request):
-    error = ""
+    error, need_login = "", False
+    user = request.user if request.user.is_authenticated else None
+    limit = settings.SCAN_DAILY_LIMIT_USER if user else settings.SCAN_DAILY_LIMIT
+    deep_locked = settings.DEEP_SCAN_REQUIRES_LOGIN and not user
+
     if request.method == "POST":
+        deep = request.POST.get("deep") == "on"
         try:
             url = normalize_url(request.POST.get("url", ""))
         except UnsafeURL as e:
@@ -51,17 +71,25 @@ def home(request):
         else:
             ip = client_ip(request)
             since = timezone.now() - timedelta(days=1)
-            used = Scan.objects.filter(client_ip=ip, created_at__gte=since).count()
-            if used >= settings.SCAN_DAILY_LIMIT:
-                error = f"Aaj ki free limit ({settings.SCAN_DAILY_LIMIT} scans) khatam ho gayi. Kal dobara try karo."
+            if deep and deep_locked:
+                error, need_login = "Poori site crawl ke liye login karo (free hai).", True
             else:
-                scan = Scan.objects.create(url=url, client_ip=ip, deep=request.POST.get("deep") == "on")
-                ids = request.session.get("scan_ids", [])
-                request.session["scan_ids"] = ([str(scan.id)] + ids)[:HISTORY_LIMIT]
-                return redirect("report", scan_id=scan.id)
+                if user:
+                    used = Scan.objects.filter(user=user, created_at__gte=since).count()
+                else:
+                    used = Scan.objects.filter(user__isnull=True, client_ip=ip, created_at__gte=since).count()
+                if used >= limit:
+                    error = f"Aaj ki limit ({limit} scans) khatam ho gayi. Kal dobara try karo."
+                    need_login = user is None and settings.SCAN_DAILY_LIMIT_USER > limit
+                else:
+                    scan = Scan.objects.create(url=url, client_ip=ip, deep=deep, user=user)
+                    ids = request.session.get("scan_ids", [])
+                    request.session["scan_ids"] = ([str(scan.id)] + ids)[:HISTORY_LIMIT]
+                    return redirect("report", scan_id=scan.id)
     return render(request, "scanner/home.html", {
-        "error": error, "limit": settings.SCAN_DAILY_LIMIT,
+        "error": error, "need_login": need_login, "limit": limit, "deep_locked": deep_locked,
         "max_pages": settings.CRAWL_MAX_PAGES, "recent": recent_scans(request),
+        "user_limit": settings.SCAN_DAILY_LIMIT_USER,
     })
 
 
@@ -71,12 +99,12 @@ def report(request, scan_id):
 
 
 def diff(request, scan_id):
-    """Isi browser session ke pichhle (same URL) scan se tulna."""
+    """Pichhle (same URL) scan se tulna. Sirf apne scans (login ya is browser session) ke beech."""
     scan = get_object_or_404(Scan, pk=scan_id)
-    ids = request.session.get("scan_ids", [])
-    if scan.status != Scan.DONE or str(scan.pk) not in ids:
+    mine = visible_q(request)
+    if scan.status != Scan.DONE or not Scan.objects.filter(mine, pk=scan.pk).exists():
         return JsonResponse({"prev": None})
-    prev = (Scan.objects.filter(pk__in=ids, url=scan.url, status=Scan.DONE, created_at__lt=scan.created_at)
+    prev = (Scan.objects.filter(mine, url=scan.url, status=Scan.DONE, created_at__lt=scan.created_at)
             .order_by("-created_at").first())
     if not prev:
         return JsonResponse({"prev": None})
@@ -91,6 +119,50 @@ def diff(request, scan_id):
         "same_mode": prev.deep == scan.deep,
         **d,
     })
+
+
+# ---------- accounts ----------
+def signup(request):
+    if request.user.is_authenticated:
+        return redirect("home")
+    form = UserCreationForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        user = form.save()
+        login(request, user)
+        claim_session_scans(request, user)
+        return redirect("home")
+    return render(request, "scanner/signup.html", {"form": form})
+
+
+class LoginViewClaim(LoginView):
+    template_name = "scanner/login.html"
+    redirect_authenticated_user = True
+
+    def form_valid(self, form):
+        response = super().form_valid(form)
+        claim_session_scans(self.request, form.get_user())
+        return response
+
+
+@login_required
+def history(request):
+    scans = Scan.objects.filter(user=request.user).order_by("-created_at")[:100]
+    return render(request, "scanner/history.html", {"scans": scans, "retention": settings.USER_RETENTION_DAYS})
+
+
+# ---------- ops ----------
+def healthz(request):
+    try:
+        with connection.cursor() as cur:
+            cur.execute("SELECT 1")
+    except Exception:
+        return JsonResponse({"status": "error"}, status=503)
+    return JsonResponse({"status": "ok"})
+
+
+def robots_txt(request):
+    body = "User-agent: *\nAllow: /$\nDisallow: /scan/\nDisallow: /history/\nDisallow: /admin/\n"
+    return HttpResponse(body, content_type="text/plain")
 
 
 # ---------- SSE stream ----------
@@ -123,7 +195,10 @@ async def _busy():
 
 async def _live(scan):
     meta = {}
-    async for ev in run_scan(scan.url, deep=scan.deep, max_pages=settings.CRAWL_MAX_PAGES):
+    async for ev in run_scan(
+        scan.url, deep=scan.deep, max_pages=settings.CRAWL_MAX_PAGES,
+        pagespeed=settings.PAGESPEED_ENABLED, pagespeed_key=settings.PAGESPEED_API_KEY or None,
+    ):
         if ev["type"] == "meta":
             meta = ev
         elif ev["type"] == "error":

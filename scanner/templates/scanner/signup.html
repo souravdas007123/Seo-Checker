@@ -1,0 +1,12 @@
+{% extends "scanner/base.html" %}
+{% block title %}Sign up | FixFirst SEO Checker{% endblock %}
+{% block content %}
+<h1 style="font-size:1.6rem">Free account banao</h1>
+<p class="lead">Poori site crawl, zyada daily scans aur apni scan history paane ke liye.</p>
+<form method="post" class="card authform" style="max-width:420px">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <button type="submit">Account banao</button>
+  <p style="margin:14px 0 0;color:var(--muted);font-size:.9rem">Pehle se account hai? <a href="{% url 'login' %}">Login</a></p>
+</form>
+{% endblock %}

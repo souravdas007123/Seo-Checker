@@ -27,17 +27,33 @@
   button, .btn { font:inherit; cursor:pointer; border:0; border-radius:10px; padding:12px 18px; background:var(--accent); color:#fff; font-weight:600; }
   @media (prefers-color-scheme: dark) { button, .btn { color:#0b1a14; } }
   button.ghost { background:transparent; color:var(--ink); border:1px solid var(--line); padding:6px 10px; font-size:.8rem; font-weight:500; }
-  input[type=text] { font:inherit; width:100%; padding:12px 14px; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--ink); }
-  input[type=text]:focus-visible, button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  input[type=text], input[type=password] { font:inherit; width:100%; padding:12px 14px; border-radius:10px; border:1px solid var(--line); background:var(--bg); color:var(--ink); }
+  input[type=text]:focus-visible, input[type=password]:focus-visible, button:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
   .err { background:var(--fail-bg); color:var(--fail); border-radius:10px; padding:10px 14px; margin-bottom:14px; }
   .row { display:flex; gap:10px; flex-wrap:wrap; }
   .row > input { flex:1 1 260px; }
+  nav.nav { margin-left:auto; display:flex; gap:14px; align-items:center; font-size:.9rem; flex-wrap:wrap; }
+  nav.nav a { color:var(--muted); text-decoration:none; } nav.nav a:hover { color:var(--ink); }
+  nav.nav .who { color:var(--muted); } nav.nav form { margin:0; }
+  .errorlist { color:var(--fail); list-style:none; padding:0; margin:4px 0; font-size:.9rem; }
+  .authform p { margin:0 0 14px; } .authform label { display:block; font-weight:600; margin-bottom:6px; }
+  .authform .helptext, .authform ul:not(.errorlist) { color:var(--muted); font-size:.8rem; }
 </style>
 {% block head %}{% endblock %}
 </head>
 <body>
 <div class="wrap">
-  <header class="top"><span class="dot"></span><a href="{% url 'home' %}">FixFirst SEO Checker</a></header>
+  <header class="top"><span class="dot"></span><a href="{% url 'home' %}">FixFirst SEO Checker</a>
+    <nav class="nav" aria-label="Account">
+      {% if user.is_authenticated %}
+        <a href="{% url 'history' %}">My scans</a>
+        <span class="who">{{ user.get_username }}</span>
+        <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="ghost" type="submit">Logout</button></form>
+      {% else %}
+        <a href="{% url 'login' %}">Login</a><a href="{% url 'signup' %}">Sign up</a>
+      {% endif %}
+    </nav>
+  </header>
   {% block content %}{% endblock %}
 </div>
 </body>

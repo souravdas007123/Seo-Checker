@@ -35,6 +35,7 @@ scanner/
 │   ├── page.py          lxml parsed page
 │   ├── context.py       robots.txt/aux files ka shared cache
 │   ├── checks/          onpage.py, technical.py, ai.py  (naya check = ek async function)
+│   ├── pagespeed.py     Core Web Vitals (PageSpeed API: lab + real-user CrUX data)
 │   ├── crawl.py         site crawler + link checker + site-level findings
 │   ├── diff.py          do scans ka tulna (fixed / bigda / naye issues)
 │   ├── fixes.py         ready-to-paste fix generators (+ polish_with_llm hook)
@@ -61,3 +62,10 @@ Rules: `Finding` mein `evidence` do, bot-block par `UNVERIFIED` do (kabhi "broke
 - Fetcher mein DNS-rebinding ka chhota gap hai (docstring dekho). Production mein internal ranges par egress firewall lagao.
 - Rate limit IP-based hai. Reverse proxy ke peeche ho to `TRUST_X_FORWARDED_FOR=1` set karo.
 - Production: `DJANGO_DEBUG=0`, `DJANGO_SECRET_KEY`, `DJANGO_ALLOWED_HOSTS` set karo, SQLite ki jagah Postgres lo.
+
+## Live (production) ke liye
+Dekho **DEPLOY.md**: env variables, Docker/Postgres, health check, purane scans ka auto-delete, aur live jaane se pehle checklist.
+
+- Accounts: signup/login (Django auth). Login user ko zyada daily limit, poori site crawl aur apni scan history milti hai.
+- Core Web Vitals: `PAGESPEED_API_KEY` set karo, tab har scan mein real-user (CrUX) aur lab data aata hai.
+- Abhi nahi: email verification, password reset, paid plans/payments, background job queue (Celery).

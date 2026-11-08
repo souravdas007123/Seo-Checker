@@ -1,0 +1,21 @@
+{% extends "scanner/base.html" %}
+{% block title %}My scans | FixFirst SEO Checker{% endblock %}
+{% block content %}
+<h1 style="font-size:1.6rem">My scans</h1>
+{% if scans %}
+<div class="card" style="padding:6px 18px">
+  {% for s in scans %}
+  <div style="display:flex;justify-content:space-between;gap:12px;padding:10px 0;{% if not forloop.last %}border-bottom:1px solid var(--line){% endif %}">
+    <a href="{% url 'report' s.id %}" style="color:inherit;word-break:break-all">{{ s.url }}{% if s.deep %} <small style="color:var(--muted)">(site crawl)</small>{% endif %}</a>
+    <span style="color:var(--muted);white-space:nowrap;font-size:.9rem">
+      {% if s.score is not None %}<strong style="color:var(--ink)">{{ s.score }}</strong>/100{% else %}{{ s.status }}{% endif %}
+      · {{ s.created_at|date:"d M Y, H:i" }}
+    </span>
+  </div>
+  {% endfor %}
+</div>
+<p style="color:var(--muted);font-size:.85rem;margin-top:10px">Aakhri 100 scans. Purane scans {{ retention }} din baad apne aap hat jaate hain.</p>
+{% else %}
+<p class="lead">Abhi koi scan nahi. <a href="{% url 'home' %}">Pehla scan chalao</a>.</p>
+{% endif %}
+{% endblock %}

@@ -5,18 +5,18 @@
 
 <form method="post" class="card" novalidate>
   {% csrf_token %}
-  {% if error %}<div class="err" role="alert">{{ error }}</div>{% endif %}
+  {% if error %}<div class="err" role="alert">{{ error }}{% if need_login %} <a href="{% url 'login' %}">Login</a> ya <a href="{% url 'signup' %}">Sign up</a> karo.{% endif %}</div>{% endif %}
   <label for="url" style="display:block;font-weight:600;margin-bottom:8px">Website URL</label>
   <div class="row">
     <input id="url" type="text" name="url" placeholder="example.com" inputmode="url" autocomplete="url" autofocus required>
     <button type="submit">Check karo</button>
   </div>
   <label style="display:flex;gap:8px;align-items:flex-start;margin-top:12px;cursor:pointer">
-    <input type="checkbox" name="deep" style="margin-top:5px">
+    <input type="checkbox" name="deep" style="margin-top:5px"{% if deep_locked %} disabled{% endif %}>
     <span><strong>Poori site crawl karo</strong> (max {{ max_pages }} pages)<br>
-      <span style="color:var(--muted);font-size:.85rem">Broken links, duplicate titles, thin pages. 1-2 minute lag sakte hain.</span></span>
+      <span style="color:var(--muted);font-size:.85rem">Broken links, duplicate titles, thin pages. 1-2 minute lag sakte hain.{% if deep_locked %} <a href="{% url 'login' %}">Login</a> ya <a href="{% url 'signup' %}">sign up</a> karna padega (free).{% endif %}</span></span>
   </label>
-  <p style="color:var(--muted);font-size:.85rem;margin:10px 0 0">Free: din mein {{ limit }} scans. Sirf public pages scan hote hain.</p>
+  <p style="color:var(--muted);font-size:.85rem;margin:10px 0 0">Din mein {{ limit }} scans{% if not user.is_authenticated %} (login karne par {{ user_limit }}){% endif %}. Sirf public pages scan hote hain.</p>
 </form>
 
 {% if recent %}

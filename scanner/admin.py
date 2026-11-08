@@ -13,7 +13,8 @@ class CheckResultInline(admin.TabularInline):
 
 @admin.register(Scan)
 class ScanAdmin(admin.ModelAdmin):
-    list_display = ("url", "status", "score", "client_ip", "created_at")
-    list_filter = ("status",)
-    search_fields = ("url",)
+    list_display = ("url", "status", "score", "user", "client_ip", "deep", "created_at")
+    list_filter = ("status", "deep")
+    search_fields = ("url", "user__username")
+    raw_id_fields = ("user",)
     inlines = [CheckResultInline]
