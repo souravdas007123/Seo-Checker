@@ -71,4 +71,6 @@ SCAN_DAILY_LIMIT = int(os.environ.get("SCAN_DAILY_LIMIT", "3"))
 # warna koi bhi X-Forwarded-For fake karke limit bypass kar sakta hai.
 TRUST_X_FORWARDED_FOR = os.environ.get("TRUST_X_FORWARDED_FOR", "0") == "1"
 # Running scan agar itne seconds se zyada purana ho to stale maano (client disconnect ho gaya hoga).
-SCAN_STALE_SECONDS = 90
+SCAN_STALE_SECONDS = 180  # deep scan (crawl) 2 minute tak chal sakta hai
+# Deep scan (site crawl) mein max kitne pages. Hard cap engine mein 100 hai.
+CRAWL_MAX_PAGES = int(os.environ.get("CRAWL_MAX_PAGES", "25"))

@@ -15,7 +15,7 @@ from urllib.parse import urljoin, urlsplit
 
 import httpx
 
-from .ssrf import UnsafeURL, assert_public_host, normalize_url
+from .ssrf import DNSFailure, UnsafeURL, assert_public_host, normalize_url
 from .types import FetchResult
 
 MAX_BYTES = 2_000_000
@@ -46,7 +46,8 @@ class Fetcher:
     async def __aexit__(self, *exc):
         await self._client.aclose()
 
-    async def fetch(self, url: str, max_bytes: int = MAX_BYTES, ua: str | None = None) -> FetchResult:
+    async def fetch(self, url: str, max_bytes: int = MAX_BYTES, ua: str | None = None,
+                    method: str = "GET") -> FetchResult:
         res = FetchResult(url=url)
         headers = {"User-Agent": ua} if ua else None
         current = url
@@ -55,7 +56,7 @@ class Fetcher:
             for _ in range(MAX_REDIRECTS + 1):
                 current = normalize_url(current)
                 await assert_public_host(urlsplit(current).hostname or "")
-                async with self._client.stream("GET", current, headers=headers) as r:
+                async with self._client.stream(method, current, headers=headers) as r:
                     res.chain.append((current, r.status_code))
                     if r.is_redirect and r.headers.get("location"):
                         current = urljoin(current, r.headers["location"])
@@ -74,11 +75,14 @@ class Fetcher:
                     break
             else:
                 res.error = "Bahut zyada redirects (loop ho sakta hai)."
+                res.error_kind = "redirects"
+        except DNSFailure as e:
+            res.error, res.error_kind = str(e), "dns"
         except UnsafeURL as e:
-            res.error = str(e)
+            res.error, res.error_kind = str(e), "unsafe"
         except httpx.TimeoutException:
-            res.error = "Site ne time par jawab nahi diya (timeout)."
+            res.error, res.error_kind = "Site ne time par jawab nahi diya (timeout).", "timeout"
         except httpx.HTTPError as e:
-            res.error = f"Connection error: {type(e).__name__}"
+            res.error, res.error_kind = f"Connection error: {type(e).__name__}", "conn"
         res.elapsed = time.perf_counter() - start
         return res

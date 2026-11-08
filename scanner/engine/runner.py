@@ -15,6 +15,7 @@ from typing import AsyncIterator
 
 from .checks import ALL_CHECKS
 from .context import Ctx
+from .crawl import crawl_site
 from .fetcher import BROWSER_UA, Fetcher
 from .page import Page
 from .priority import assign_priority, compute_score
@@ -39,7 +40,7 @@ async def _safe(check, ctx) -> list[Finding]:
                     label=UNVERIFIED, impact=1, effort=1)]
 
 
-async def run_scan(raw_url: str) -> AsyncIterator[dict]:
+async def run_scan(raw_url: str, deep: bool = False, max_pages: int = 25) -> AsyncIterator[dict]:
     try:
         url = normalize_url(raw_url)
     except UnsafeURL as e:
@@ -79,9 +80,29 @@ async def run_scan(raw_url: str) -> AsyncIterator[dict]:
                     findings.append(f)
                     yield {"type": "finding", "finding": f.to_dict()}
 
+            pages: list[dict] = []
+            if deep:
+                try:
+                    async for ev in crawl_site(ctx, max_pages=max_pages):
+                        if ev["type"] == "progress":
+                            yield ev
+                        elif ev["type"] == "site":
+                            pages = ev["pages"]
+                            for f in ev["findings"]:
+                                findings.append(f)
+                                yield {"type": "finding", "finding": f.to_dict()}
+                except Exception:  # crawl toote to bhi single-page report mile
+                    log.exception("site crawl failed")
+                    f = Finding("site_crawl", "site", "Site crawl", UNVERIFIED,
+                                "Site crawl poora nahi ho paya (internal error).",
+                                label=UNVERIFIED, impact=1, effort=1)
+                    findings.append(f)
+                    yield {"type": "finding", "finding": f.to_dict()}
+
             assign_priority(findings)
             findings.sort(key=lambda f: (-f.priority, f.check_id))
-            yield {"type": "done", "score": compute_score(findings), "findings": [f.to_dict() for f in findings]}
+            yield {"type": "done", "score": compute_score(findings),
+                   "findings": [f.to_dict() for f in findings], "pages": pages}
     finally:
         for t in tasks:
             if not t.done():

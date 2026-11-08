@@ -15,6 +15,8 @@ class Scan(models.Model):
     http_status = models.PositiveSmallIntegerField(null=True, blank=True)
     elapsed_ms = models.PositiveIntegerField(null=True, blank=True)
     error = models.CharField(max_length=300, blank=True)
+    deep = models.BooleanField(default=False)  # poori site crawl
+    pages_json = models.TextField(blank=True)  # crawl kiye pages ki list (JSON)
     client_ip = models.GenericIPAddressField(null=True, blank=True, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     started_at = models.DateTimeField(null=True, blank=True)

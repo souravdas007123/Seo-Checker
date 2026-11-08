@@ -9,7 +9,7 @@ python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 
 python manage.py makemigrations scanner
-python manage.py migrate
+python manage.py migrate        # model badalne par (jaise deep/pages_json) dono dobara chalao
 python manage.py createsuperuser        # optional, /admin ke liye
 
 SCAN_DAILY_LIMIT=1000 uvicorn seochecker.asgi:application --reload   # dev
@@ -35,6 +35,8 @@ scanner/
 │   ├── page.py          lxml parsed page
 │   ├── context.py       robots.txt/aux files ka shared cache
 │   ├── checks/          onpage.py, technical.py, ai.py  (naya check = ek async function)
+│   ├── crawl.py         site crawler + link checker + site-level findings
+│   ├── diff.py          do scans ka tulna (fixed / bigda / naye issues)
 │   ├── fixes.py         ready-to-paste fix generators (+ polish_with_llm hook)
 │   ├── priority.py      score + impact x effort ranking
 │   └── runner.py        parallel checks, event stream
@@ -47,7 +49,12 @@ Rules: `Finding` mein `evidence` do, bot-block par `UNVERIFIED` do (kabhi "broke
 
 ## Abhi ke known limits
 
-- V1 sirf **ek URL** scan karta hai (site crawler V3).
+- Normal scan ek URL ka hai. "Poori site crawl" checkbox par max `CRAWL_MAX_PAGES` (default 25, hard cap 100) pages crawl hote hain. Limit ya 70 sec time khatam ho to report mein saaf likha aata hai ki crawl adhoora tha.
+- Crawler robots.txt ke Disallow respect karta hai, JS-rendered links nahi dekhta, aur orphan-page/click-depth check abhi nahi hain (adhoore crawl par ye jhoothe nateeje dete).
+- Link checker: sirf 404/410 ya DNS fail "broken" hai. 403/429/timeout/5xx "unverified" hote hain. Ek scan mein max 100 non-crawled links check hote hain.
+- History login ke bina browser session par based hai (doosre ke scan nahi dikhte). Sahi history ke liye accounts chahiye.
+- Report ka link jisko mile wo dekh sakta hai (random UUID), lekin page `noindex` hai. PDF ke liye browser ka Print > Save as PDF use hota hai.
+- `BOT_UA` (fetcher.py) mein placeholder URL hai, production mein apni site ka bot-info page daalo.
 - JS-rendered pages (React/Vue) ka content raw HTML mein nahi hota, isliye content/heading checks galat dikha sakte hain (Playwright fast/slow path V2).
 - Fixes **template-based drafts** hain. LLM polish ke liye `fixes.polish_with_llm` hook ready hai, jisme abhi kuch nahi.
 - Server response time hamare server se naapa jaata hai, isliye `estimated` label hai. Real-user data ke liye CrUX/PageSpeed API V2 mein.

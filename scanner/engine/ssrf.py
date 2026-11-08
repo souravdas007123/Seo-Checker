@@ -14,6 +14,10 @@ class UnsafeURL(ValueError):
     """User-facing message ke saath raise hota hai."""
 
 
+class DNSFailure(UnsafeURL):
+    """Domain resolve nahi hua (link checker ise 'broken' maan sakta hai)."""
+
+
 def normalize_url(raw: str) -> str:
     raw = (raw or "").strip()
     if not raw:
@@ -56,7 +60,7 @@ async def assert_public_host(host: str) -> list[str]:
         try:
             infos = await loop.getaddrinfo(host, None, type=socket.SOCK_STREAM)
         except socket.gaierror:
-            raise UnsafeURL("Ye domain resolve nahi ho raha. Spelling check karo.")
+            raise DNSFailure("Ye domain resolve nahi ho raha. Spelling check karo.")
         ips = sorted({info[4][0] for info in infos})
     if not ips:
         raise UnsafeURL("Domain ka IP nahi mila.")

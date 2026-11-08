@@ -1,6 +1,11 @@
 {% extends "scanner/base.html" %}
 {% block title %}SEO report: {{ scan.url }}{% endblock %}
 {% block head %}
+<meta name="robots" content="noindex">
+<meta property="og:type" content="website">
+<meta property="og:title" content="SEO report: {{ scan.url }}">
+<meta property="og:description" content="{% if scan.score is not None %}SEO score {{ scan.score }}/100. Ready-to-paste fixes ke saath poori report.{% else %}SEO report ban rahi hai.{% endif %}">
+<meta property="og:url" content="{{ request.build_absolute_uri }}">
 <style>
   .score { display:flex; align-items:center; gap:18px; flex-wrap:wrap; }
   .ring { --p:0; width:96px; height:96px; border-radius:50%; display:grid; place-items:center; flex:none;
@@ -31,6 +36,20 @@
   .fixhead { display:flex; justify-content:space-between; align-items:center; margin-top:10px; font-size:.8rem; color:var(--muted); font-weight:600; }
   details > summary { cursor:pointer; color:var(--muted); font-size:.9rem; margin:16px 0 4px; }
   .legend { color:var(--muted); font-size:.82rem; margin-top:8px; }
+  .actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:14px; }
+  .diff { margin-top:16px; padding-top:14px; border-top:1px solid var(--line); font-size:.92rem; }
+  .diff p { margin:4px 0; }
+  .diff .ok { color:var(--pass); } .diff .bad { color:var(--fail); }
+  .tablewrap { overflow-x:auto; }
+  table { border-collapse:collapse; width:100%; font-size:.82rem; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:top; }
+  td.u { word-break:break-all; min-width:200px; }
+  @media print {
+    body { background:#fff; color:#000; }
+    .actions, .progress, #live, header.top { display:none !important; }
+    .card, .f { break-inside:avoid; }
+    pre { white-space:pre-wrap; }
+  }
 </style>
 {% endblock %}
 {% block content %}
@@ -38,11 +57,16 @@
   <div class="score">
     <div class="ring" id="ring" role="img" aria-label="SEO score"><span id="scoreNum">…</span></div>
     <div>
-      <strong>SEO report</strong>
+      <strong>SEO report{% if scan.deep %} (poori site crawl){% endif %}</strong>
       <div class="url" id="finalUrl">{{ scan.url }}</div>
       <div class="progress" id="progress" aria-live="polite"><span class="spin"></span><span id="progressText">Scan shuru ho raha hai…</span></div>
     </div>
   </div>
+  <div class="actions" id="actions" hidden>
+    <button type="button" class="ghost" id="copyLink">Report ka link copy karo</button>
+    <button type="button" class="ghost" id="printBtn">PDF save karo</button>
+  </div>
+  <div class="diff" id="diff" hidden></div>
   <div class="top3" id="top3" hidden>
     <strong>Pehle ye fix karo</strong>
     <ol id="top3List"></ol>
@@ -58,7 +82,8 @@
 <script>
 (function () {
   const STREAM_URL = "{% url 'stream' scan.id %}";
-  const CATS = { onpage: "On-page SEO", technical: "Technical SEO", ai: "AI search readiness" };
+  const DIFF_URL = "{% url 'diff' scan.id %}";
+  const CATS = { onpage: "On-page SEO", technical: "Technical SEO", site: "Poori site (crawl)", ai: "AI search readiness" };
   const STATUS_TEXT = { fail: "Fix karo", warn: "Improve", pass: "OK", info: "Info", unverified: "Unverified" };
   const $ = (id) => document.getElementById(id);
 
@@ -99,6 +124,30 @@
     return box;
   }
 
+  function pagesTable(pages) {
+    const d = el("details");
+    d.append(el("summary", "", "Crawl kiye gaye " + pages.length + " pages ki list"));
+    const wrap = el("div", "tablewrap");
+    const t = el("table");
+    const head = el("tr");
+    ["Status", "URL", "Words", "Issues"].forEach((h) => head.append(el("th", "", h)));
+    t.append(head);
+    pages.forEach((p) => {
+      const tr = el("tr");
+      tr.append(el("td", "", p.status ? String(p.status) : "error"));
+      const u = el("td", "u");
+      if (/^https?:\/\//i.test(p.url)) {
+        const a = el("a", "", p.url);
+        a.href = p.url; a.target = "_blank"; a.rel = "noopener noreferrer";
+        u.append(a);
+      } else { u.textContent = p.url; }
+      tr.append(u, el("td", "", String(p.words || "")), el("td", "", (p.issues || []).join(", ")));
+      t.append(tr);
+    });
+    wrap.append(t); d.append(wrap);
+    return d;
+  }
+
   function setScore(score) {
     const ring = $("ring");
     ring.style.setProperty("--p", score);
@@ -107,7 +156,7 @@
     ring.setAttribute("aria-label", "SEO score " + score + " out of 100");
   }
 
-  function renderFinal(score, findings) {
+  function renderFinal(score, findings, pages) {
     $("live").replaceChildren();
     const sections = $("sections");
     sections.replaceChildren();
@@ -142,12 +191,43 @@
         rest.forEach((f) => d.append(card(f)));
         sections.append(d);
       }
+      if (cat === "site" && pages && pages.length) sections.append(pagesTable(pages));
     });
+    $("actions").hidden = false;
   }
 
-  function finish(msg) {
-    $("progress").replaceChildren(el("span", "", msg || ""));
+  async function loadDiff() {
+    try {
+      const r = await fetch(DIFF_URL, { headers: { Accept: "application/json" } });
+      if (!r.ok) return;
+      const d = await r.json();
+      if (!d.prev) return;
+      const box = $("diff");
+      box.replaceChildren(el("strong", "", "Pichhle scan se tulna (" + d.prev.date + ", score " + d.prev.score + ")"));
+      const delta = d.score_delta;
+      box.append(el("p", delta >= 0 ? "ok" : "bad", "Score: " + (delta > 0 ? "+" : "") + delta + " points"));
+      const add = (label, arr, cls) => {
+        if (arr && arr.length) box.append(el("p", cls, label + ": " + arr.join(", ")));
+      };
+      add("Theek hua", d.fixed, "ok");
+      add("Behtar hua", d.improved, "ok");
+      add("Bigad gaya", d.regressed, "bad");
+      add("Naye issues", d.new_issues, "bad");
+      if (!d.same_mode) box.append(el("p", "meta", "Note: pichhla scan alag mode (single page / site crawl) mein tha, isliye naye site-checks ginti mein nahi liye."));
+      box.hidden = false;
+    } catch (e) { /* tulna optional hai */ }
   }
+
+  $("copyLink").addEventListener("click", async (e) => {
+    const b = e.currentTarget;
+    try { await navigator.clipboard.writeText(location.href); b.textContent = "Link copy ho gaya ✓"; }
+    catch (err) { b.textContent = "Copy nahi hua"; }
+    setTimeout(() => (b.textContent = "Report ka link copy karo"), 1800);
+  });
+  $("printBtn").addEventListener("click", () => window.print());
+  window.addEventListener("beforeprint", () => document.querySelectorAll("details").forEach((d) => (d.open = true)));
+
+  function finish(msg) { $("progress").replaceChildren(el("span", "", msg || "")); }
 
   const es = new EventSource(STREAM_URL);
   let ended = false;
@@ -163,8 +243,9 @@
       $("live").append(card(ev.finding));
     } else if (ev.type === "done") {
       ended = true; es.close();
-      renderFinal(ev.score, ev.findings);
+      renderFinal(ev.score, ev.findings, ev.pages);
       finish("Scan poora hua ✓");
+      loadDiff();
     } else if (ev.type === "error" || ev.type === "busy") {
       ended = true; es.close();
       $("scoreNum").textContent = "–";

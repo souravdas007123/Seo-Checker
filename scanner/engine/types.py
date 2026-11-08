@@ -50,3 +50,4 @@ class FetchResult:
     size: int = 0
     truncated: bool = False
     error: str = ""
+    error_kind: str = ""  # dns | unsafe | timeout | conn | redirects

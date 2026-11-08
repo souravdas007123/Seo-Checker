@@ -15,7 +15,7 @@ from scanner.engine import runner  # noqa: E402
 from scanner.engine.types import FetchResult  # noqa: E402
 
 HTML = ("<!doctype html><html lang='en'><head><title>Handmade Soap Online | Example Store</title>"
-        "<meta name='viewport' content='width=device-width'></head><body><h1>Soap</h1><p>" + "word " * 200 + "</p></body></html>")
+        "<meta name='viewport' content='width=device-width'></head><body><h1>Soap</h1><a href='/about'>About us</a><p>" + "word " * 200 + "</p></body></html>")
 
 
 class FakeFetcher:
@@ -30,7 +30,7 @@ class FakeFetcher:
     async def __aexit__(self, *a):
         return False
 
-    async def fetch(self, url, max_bytes=0, ua=None):
+    async def fetch(self, url, max_bytes=0, ua=None, method="GET"):
         FakeFetcher.calls.append((url, ua))
         if url.endswith("/robots.txt") or url.endswith("/sitemap.xml") or url.endswith("/llms.txt"):
             return FetchResult(url=url, final_url=url, status=404, text="nf", chain=[(url, 404)])
@@ -91,3 +91,38 @@ def test_waf_block_reports_error_not_findings(monkeypatch):
     assert events[-1]["type"] == "error" and "403" in events[-1]["message"]
     assert not any(e["type"] == "finding" for e in events)
     assert len(FakeFetcher.calls) == 2 and FakeFetcher.calls[1][1] == runner.BROWSER_UA  # retry hua
+
+
+async def collect_deep(url):
+    return [ev async for ev in runner.run_scan(url, deep=True, max_pages=5)]
+
+
+def test_deep_scan_adds_site_findings_and_pages(monkeypatch):
+    monkeypatch.setattr(runner, "Fetcher", FakeFetcher)
+    events = asyncio.run(collect_deep("https://example.com"))
+    done = events[-1]
+    assert done["type"] == "done"
+    site = [f for f in done["findings"] if f["category"] == "site"]
+    assert any(f["check_id"] == "site_summary" for f in site) and any(f["check_id"] == "site_broken_links" for f in site)
+    assert {p["url"] for p in done["pages"]} >= {"https://example.com/", "https://example.com/about"}
+    live_site = [e for e in events if e["type"] == "finding" and e["finding"]["category"] == "site"]
+    assert len(live_site) == len(site)  # live stream aur final list barabar
+    assert [e for e in events if e["type"] == "progress" and "crawl" in e["message"].lower()]
+
+
+def test_normal_scan_has_no_site_findings_and_empty_pages(monkeypatch):
+    monkeypatch.setattr(runner, "Fetcher", FakeFetcher)
+    done = asyncio.run(collect("https://example.com"))[-1]
+    assert done["pages"] == [] and not [f for f in done["findings"] if f["category"] == "site"]
+
+
+def test_crawl_crash_does_not_lose_single_page_report(monkeypatch):
+    async def boom(ctx, max_pages=25):
+        raise RuntimeError("bug")
+        yield  # pragma: no cover
+
+    monkeypatch.setattr(runner, "Fetcher", FakeFetcher)
+    monkeypatch.setattr(runner, "crawl_site", boom)
+    done = asyncio.run(collect_deep("https://example.com"))[-1]
+    assert done["type"] == "done"
+    assert [f for f in done["findings"] if f["check_id"] == "site_crawl"][0]["status"] == "unverified"
